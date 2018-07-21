@@ -52,18 +52,14 @@ namespace PricePointOptimisation
 
         private void ProcessProduct(IProduct product, IReadOnlyCollection<IDigit> digitList, double price, int currentPoint)
         {
-            var closest = GetClosest(currentPoint, digitList);            
+            var closest = GetClosest(currentPoint, digitList);
+            var plusTenTest = GetClosest(currentPoint += 10, digitList);
 
-            if(currentPoint == 0)
+            if (Math.Abs(plusTenTest - 10) < Math.Abs(closest - currentPoint))
             {
-                var plusTenTest = GetClosest(currentPoint += 10, digitList);
-
-                if (Math.Abs(plusTenTest - 10) < Math.Abs(closest - currentPoint))
-                {
-                    currentPoint = 10;
-                    closest = plusTenTest;
-                }
-            }            
+                currentPoint = 10;
+                closest = plusTenTest;
+            }
 
             SetPrice(product, price, closest, currentPoint);
         }
@@ -77,7 +73,7 @@ namespace PricePointOptimisation
             return closestPricePoint.PricePoint;
         }
 
-        private void SetPrice(IProduct product,double price, int closest, int currentPoint)
+        private void SetPrice(IProduct product, double price, int closest, int currentPoint)
         {
             var value = Math.Abs(closest - currentPoint).ToString();
             value = value.Length == 1 ? $".0{value}" : value.Insert(value.Length - 2, ".");
