@@ -8,60 +8,45 @@ namespace PricePointOptimisation
     {
         public void Optimise(IReadOnlyCollection<IProduct> productList, IReadOnlyCollection<IDigit> digitList)
         {
-
             foreach (var product in productList)
             {
-                var price = product.OriginalPrice;
+                var startingPrice = Shared.SetStartingPrice(product);
+                var currentPoint = Shared.GetLastDigit(product, startingPrice);
+                Shared.CheckPriceRange(product);
 
-                if (product.OriginalPrice < product.MinPrice)
-                    price = product.MinPrice;
+                if (product.NewPrice != 0)
+                    return;
 
-                if (product.OriginalPrice > product.MaxPrice)
-                    price = product.MaxPrice;
+                if (digitList.ToList().Any(x => x.PricePoint == currentPoint) && product.NewPrice == 0)
+                    product.NewPrice = startingPrice;
+                
+                if (product.NewPrice == 0)
+                    this.ProcessProduct(product, digitList, startingPrice, currentPoint);
 
-                //Get last digit
-                var isInteger = int.TryParse(price.ToString("n2")
-                    .Substring(price.ToString().Length - 1), out var currentPoint);
-
-                if (currentPoint != 0)
-                {
-                    if (!isInteger)
-                    {
-                        product.Message = "An error occured";
-                        continue;
-                    }
-                }
-
-                if (product.MinPrice > product.MaxPrice)
-                {
-                    product.Message = "An error occured";
-                    continue;
-                }
-
-
-                //Check final digit isn't in optimisation list
-                if (digitList.ToList().Any(x => x.PricePoint == currentPoint))
-                {
-                    product.Message = "Current price is optimal";
-                    product.NewPrice = price;
-                }
-
-                ProcessProduct(product, digitList, price, currentPoint);
+                Shared.SetProductMessage(product);
             }
         }
 
         private void ProcessProduct(IProduct product, IReadOnlyCollection<IDigit> digitList, double price, int currentPoint)
         {
-            var closest = GetClosest(currentPoint, digitList);
-            var plusTenTest = GetClosest(currentPoint += 10, digitList);
+            if (digitList.Count == 0)
+            {
+                product.NewPrice = product.OriginalPrice;
+                product.Message = "Unable to set price";
+                return;
+            }
 
-            if (Math.Abs(plusTenTest - 10) < Math.Abs(closest - currentPoint))
+            var plusTen = currentPoint + 10;
+            var closest = this.GetClosest(currentPoint, digitList);
+            var plusTenTest = this.GetClosest(plusTen, digitList);
+
+            if (Math.Abs(plusTenTest - plusTen) < Math.Abs(closest - currentPoint))
             {
                 currentPoint = 10;
                 closest = plusTenTest;
             }
 
-            SetPrice(product, price, closest, currentPoint);
+            this.SetPrice(product, price, closest, currentPoint, digitList);
         }
 
         private int GetClosest(int currentPoint, IReadOnlyCollection<IDigit> digitList)
@@ -73,36 +58,47 @@ namespace PricePointOptimisation
             return closestPricePoint.PricePoint;
         }
 
-        private void SetPrice(IProduct product, double price, int closest, int currentPoint)
+        private void SetPrice(IProduct product, double price, int closest, int currentPoint, IReadOnlyCollection<IDigit> digitList)
         {
             var value = Math.Abs(closest - currentPoint).ToString();
             value = value.Length == 1 ? $".0{value}" : value.Insert(value.Length - 2, ".");
+            var isDouble = double.TryParse(value, out var change);
+            var newDigitList = digitList
+                        .Select(x => new Digit(x.PricePoint))
+                        .Where(y => y.PricePoint != closest).ToList();
+
+            if (!isDouble)
+            {
+                product.Message = "An error occured :: Price not in correct format";
+                product.NewPrice = product.OriginalPrice;
+                return;
+            }
 
             if (closest < currentPoint)
             {
-                var isDeductionDouble = double.TryParse(value, out var deduction);
+                var updatedPrice = price - change;
 
-                if (!isDeductionDouble)
+                if (updatedPrice < product.MinPrice || updatedPrice > product.MaxPrice)
                 {
-                    product.Message = "An error occured";
-                    return;
+                    this.ProcessProduct(product, newDigitList, price, currentPoint);
                 }
-
-                product.NewPrice = price -= deduction;
-                product.Message = $"Price reduced";
+                else
+                {
+                    product.NewPrice = updatedPrice;
+                }
             }
-            else
+            else if (closest > currentPoint)
             {
-                var isAdditionDouble = double.TryParse(value, out var addition);
+                var updatedPrice = price + change;
 
-                if (!isAdditionDouble)
+                if (updatedPrice < product.MinPrice || updatedPrice > product.MaxPrice)
                 {
-                    product.Message = "An error occured";
-                    return;
+                    this.ProcessProduct(product, newDigitList, price, currentPoint);
                 }
-
-                product.NewPrice = price + addition;
-                product.Message = $"Price increased";
+                else
+                {
+                    product.NewPrice = updatedPrice;
+                }
             }
         }
     }
